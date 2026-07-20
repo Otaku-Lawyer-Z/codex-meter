@@ -8,6 +8,7 @@ const execFileAsync = promisify(execFile);
 const tailCache = new Map();
 const MAX_TAIL_BYTES = 768 * 1024;
 const MAX_ACTIVE_AGE_MS = 12 * 60 * 60 * 1000;
+const STATE_DB_RETRY_DELAYS_MS = [0, 250, 750];
 
 const THREAD_QUERY = `
 SELECT
@@ -152,6 +153,53 @@ export function buildTaskSnapshot(threads, eventsByThread, { updatedAt = Date.no
   };
 }
 
+export function isTransientStateDbError(error) {
+  const code = String(error?.code || "").toUpperCase();
+  const message = String(error?.message || error || "").toLowerCase();
+  return ["CODEX_STATE_DB_UNAVAILABLE", "SQLITE_CANTOPEN", "ENOENT", "EBUSY", "EIO"].includes(code)
+    || message.includes("unable to open database file")
+    || message.includes("database is locked")
+    || message.includes("resource temporarily unavailable")
+    || message.includes("没有找到 codex 本地任务状态库");
+}
+
+export async function retryTransientStateDb(
+  operation,
+  { delays = STATE_DB_RETRY_DELAYS_MS, wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)) } = {},
+) {
+  let lastError;
+  for (let attempt = 0; attempt < delays.length; attempt += 1) {
+    if (delays[attempt] > 0) await wait(delays[attempt]);
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isTransientStateDbError(error) || attempt === delays.length - 1) throw error;
+    }
+  }
+  throw lastError;
+}
+
+export function friendlyTaskMonitorError(error) {
+  if (isTransientStateDbError(error)) return "Codex 任务状态暂时不可用，正在自动重试。";
+  return "暂时无法读取 Codex 任务状态，请稍后重试。";
+}
+
+export function recoverTaskSnapshot(
+  previous,
+  error,
+  { now = Date.now(), failureStartedAt = now, wakeGraceUntil = 0, graceMs = 15_000 } = {},
+) {
+  const hideTransientError = isTransientStateDbError(error)
+    && (now < wakeGraceUntil || now - failureStartedAt < graceMs);
+  return {
+    ...previous,
+    recovering: true,
+    checkedAt: now,
+    error: hideTransientError ? null : friendlyTaskMonitorError(error),
+  };
+}
+
 async function resolveStateDb() {
   const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
   const candidates = [
@@ -166,7 +214,9 @@ async function resolveStateDb() {
       // Try the next known Codex state database location.
     }
   }
-  throw new Error("没有找到 Codex 本地任务状态库。");
+  const error = new Error("没有找到 Codex 本地任务状态库。");
+  error.code = "CODEX_STATE_DB_UNAVAILABLE";
+  throw error;
 }
 
 async function readTail(filePath) {
@@ -192,12 +242,14 @@ async function readTail(filePath) {
 }
 
 export async function readCodexTaskSnapshot() {
-  const dbPath = await resolveStateDb();
-  const { stdout } = await execFileAsync("/usr/bin/sqlite3", ["-readonly", "-json", dbPath, THREAD_QUERY], {
-    encoding: "utf8",
-    maxBuffer: 2 * 1024 * 1024,
+  const threads = await retryTransientStateDb(async () => {
+    const dbPath = await resolveStateDb();
+    const { stdout } = await execFileAsync("/usr/bin/sqlite3", ["-readonly", "-json", dbPath, THREAD_QUERY], {
+      encoding: "utf8",
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    return JSON.parse(stdout || "[]");
   });
-  const threads = JSON.parse(stdout || "[]");
   const eventsByThread = new Map();
   await Promise.all(threads.map(async (thread) => {
     try {

@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import {
   analyseThread,
   buildTaskSnapshot,
+  isTransientStateDbError,
   parseJsonLines,
+  recoverTaskSnapshot,
+  retryTransientStateDb,
 } from "../src/lib/task-monitor.mjs";
 
 const thread = {
@@ -68,4 +71,50 @@ test("buildTaskSnapshot counts active tasks and distinct projects", () => {
   assert.equal(snapshot.total, 2);
   assert.equal(snapshot.running, 2);
   assert.equal(snapshot.projects, 2);
+});
+
+test("sleep-wake sqlite errors are transient", () => {
+  const error = new Error("Error: in prepare, unable to open database file (14)");
+  assert.equal(isTransientStateDbError(error), true);
+});
+
+test("transient database reads retry before surfacing an error", async () => {
+  let attempts = 0;
+  const result = await retryTransientStateDb(async () => {
+    attempts += 1;
+    if (attempts < 3) throw new Error("unable to open database file (14)");
+    return "ready";
+  }, { delays: [0, 1, 1], wait: async () => {} });
+  assert.equal(result, "ready");
+  assert.equal(attempts, 3);
+});
+
+test("wake recovery keeps the last snapshot and hides raw sqlite commands", () => {
+  const previous = {
+    items: [{ id: "thread-1" }],
+    total: 1,
+    running: 1,
+    waiting: 0,
+    projects: 1,
+    updatedAt: 1_800_000_000_000,
+    error: null,
+  };
+  const raw = new Error("Command failed: /usr/bin/sqlite3 SELECT secret-looking-query; unable to open database file (14)");
+  const recovering = recoverTaskSnapshot(previous, raw, {
+    now: 1_800_000_005_000,
+    failureStartedAt: 1_800_000_005_000,
+    wakeGraceUntil: 1_800_000_025_000,
+  });
+  assert.equal(recovering.items, previous.items);
+  assert.equal(recovering.updatedAt, previous.updatedAt);
+  assert.equal(recovering.recovering, true);
+  assert.equal(recovering.error, null);
+
+  const prolonged = recoverTaskSnapshot(previous, raw, {
+    now: 1_800_000_030_000,
+    failureStartedAt: 1_800_000_005_000,
+    wakeGraceUntil: 1_800_000_025_000,
+  });
+  assert.equal(prolonged.error, "Codex 任务状态暂时不可用，正在自动重试。");
+  assert.equal(prolonged.error.includes("sqlite3"), false);
 });

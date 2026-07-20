@@ -1,13 +1,16 @@
-import { app, BrowserWindow, ipcMain, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme, powerMonitor, shell } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CodexAppServerClient } from "./lib/codex-client.mjs";
 import { normalizeDashboardData } from "./lib/normalize.mjs";
-import { readCodexTaskSnapshot } from "./lib/task-monitor.mjs";
+import { readCodexTaskSnapshot, recoverTaskSnapshot } from "./lib/task-monitor.mjs";
 import { SettingsStore } from "./lib/settings.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ALLOWED_INTERVALS = new Set([15, 30, 60, 300]);
+const TASK_REFRESH_INTERVAL_MS = 2_000;
+const TASK_RETRY_INTERVAL_MS = 750;
+const WAKE_GRACE_MS = 20_000;
 
 let mainWindow;
 let client;
@@ -18,6 +21,8 @@ let boundsSaveTimer;
 let taskTimer;
 let refreshing = null;
 let taskRefreshing = null;
+let taskFailureStartedAt = null;
+let wakeGraceUntil = 0;
 
 let state = {
   connection: "connecting",
@@ -34,6 +39,8 @@ let taskState = {
   projects: 0,
   error: null,
   updatedAt: null,
+  checkedAt: null,
+  recovering: false,
 };
 
 app.setName("Codex Meter");
@@ -55,13 +62,22 @@ async function refreshTasks() {
   if (taskRefreshing) return taskRefreshing;
   taskRefreshing = (async () => {
     try {
-      taskState = await readCodexTaskSnapshot();
-    } catch (error) {
+      const snapshot = await readCodexTaskSnapshot();
       taskState = {
-        ...taskState,
-        error: `Codex 任务状态暂时不可用：${error?.message || String(error)}`,
-        updatedAt: Date.now(),
+        ...snapshot,
+        checkedAt: Date.now(),
+        recovering: false,
       };
+      taskFailureStartedAt = null;
+      wakeGraceUntil = 0;
+    } catch (error) {
+      const now = Date.now();
+      taskFailureStartedAt ??= now;
+      taskState = recoverTaskSnapshot(taskState, error, {
+        now,
+        failureStartedAt: taskFailureStartedAt,
+        wakeGraceUntil,
+      });
     } finally {
       pushTaskState();
       taskRefreshing = null;
@@ -75,8 +91,28 @@ function scheduleTaskRefresh(delay = 0) {
   clearTimeout(taskTimer);
   taskTimer = setTimeout(async () => {
     await refreshTasks();
-    scheduleTaskRefresh(2_000);
+    scheduleTaskRefresh(taskState.recovering ? TASK_RETRY_INTERVAL_MS : TASK_REFRESH_INTERVAL_MS);
   }, delay);
+}
+
+function suspendRefreshes() {
+  clearTimeout(taskTimer);
+  clearTimeout(refreshTimer);
+}
+
+function resumeRefreshes() {
+  const now = Date.now();
+  wakeGraceUntil = now + WAKE_GRACE_MS;
+  taskFailureStartedAt = now;
+  taskState = {
+    ...taskState,
+    recovering: true,
+    error: null,
+    checkedAt: now,
+  };
+  pushTaskState();
+  scheduleTaskRefresh(300);
+  scheduleRefresh(1_200);
 }
 
 async function connect() {
@@ -253,6 +289,9 @@ app.whenReady().then(async () => {
   await store.load();
   registerIpc();
   createWindow();
+  powerMonitor.on("suspend", suspendRefreshes);
+  powerMonitor.on("resume", resumeRefreshes);
+  powerMonitor.on("unlock-screen", resumeRefreshes);
   scheduleTaskRefresh(0);
   connect().then(() => scheduleRefresh(0)).catch(handleConnectionError);
 

@@ -88,17 +88,27 @@ function updatedLabel(timestamp) {
 
 function renderTasks(snapshot) {
   const items = snapshot?.items || [];
+  const recovering = Boolean(snapshot?.recovering);
   nodes["task-count"].textContent = snapshot?.total ?? "—";
   nodes["running-count"].textContent = snapshot?.running ?? "—";
   nodes["waiting-count"].textContent = snapshot?.waiting ?? "—";
   nodes["project-count"].textContent = snapshot?.projects ?? "—";
-  nodes["task-updated"].textContent = snapshot?.updatedAt
-    ? `${dateTime.format(new Date(snapshot.updatedAt))} 采集`
-    : "等待首次采集";
+  nodes["task-updated"].textContent = recovering
+    ? snapshot?.updatedAt
+      ? `恢复连接中 · 上次 ${dateTime.format(new Date(snapshot.updatedAt))}`
+      : "正在恢复任务连接"
+    : snapshot?.updatedAt
+      ? `${dateTime.format(new Date(snapshot.updatedAt))} 采集`
+      : "等待首次采集";
   nodes["task-list"].replaceChildren();
+  nodes["task-list"].classList.toggle("is-recovering", recovering);
 
-  if (snapshot?.error) {
+  if (snapshot?.error && !items.length) {
     nodes["task-list"].append(element("div", "task-empty", snapshot.error));
+    return;
+  }
+  if (recovering && !items.length) {
+    nodes["task-list"].append(element("div", "task-empty is-recovering", "正在恢复 Codex 任务状态…"));
     return;
   }
   if (!items.length) {
