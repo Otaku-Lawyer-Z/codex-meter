@@ -92,37 +92,30 @@
                 <div class="window-label" id="hero-window-label">额度周期</div>
                 <div class="reset-countdown" id="hero-countdown">正在读取账户信息</div>
                 <div class="reset-time" id="hero-reset-time">—</div>
-                <div class="usage-split">
-                  <span><i class="used-key"></i><b id="hero-used">—</b> 已用</span>
-                  <span><i class="remain-key"></i><b id="hero-remain-small">—</b> 可用</span>
-                </div>
               </div>
             </div>
           </article>
 
-          <div class="stats-grid">
-            <article class="stat-card reset-stat">
-              <span class="stat-label">可用重置</span>
-              <strong id="reset-count">—</strong>
-              <span class="stat-unit">次完整额度重置</span>
-              <div class="stat-accent"></div>
-            </article>
-            <article class="stat-card">
-              <span class="stat-label">累计 Tokens</span>
-              <strong id="lifetime-tokens">—</strong>
-              <span class="stat-unit" id="lifetime-detail">账户历史总量</span>
-            </article>
-            <article class="stat-card">
-              <span class="stat-label">连续使用</span>
-              <strong id="streak-days">—</strong>
-              <span class="stat-unit" id="streak-detail">天</span>
-            </article>
-            <article class="stat-card">
-              <span class="stat-label">单日峰值</span>
-              <strong id="peak-tokens">—</strong>
-              <span class="stat-unit">tokens</span>
-            </article>
-          </div>
+          <article class="task-panel">
+            <div class="task-heading">
+              <div>
+                <span class="card-kicker">CODEX 任务</span>
+                <h2>当前项目与进程</h2>
+                <span class="task-live-summary"><i class="task-live-dot"></i><b id="running-count">—</b> 执行中 · <b id="waiting-count">—</b> 等待</span>
+              </div>
+              <div class="task-heading-summary">
+                <div class="task-count"><strong id="task-count">—</strong><span>项</span></div>
+                <span class="token-chip">累计 <b id="lifetime-tokens">—</b> tokens</span>
+              </div>
+            </div>
+            <div id="task-list" class="task-list">
+              <div class="task-empty">正在读取 Codex 任务状态…</div>
+            </div>
+            <div class="task-footer">
+              <span><i class="task-live-dot"></i><b id="project-count">—</b> 个项目 · 每 2 秒更新</span>
+              <span id="task-updated">等待首次采集</span>
+            </div>
+          </article>
         </section>
 
         <section class="lower-grid">

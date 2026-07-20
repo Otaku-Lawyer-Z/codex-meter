@@ -11,4 +11,9 @@ contextBridge.exposeInMainWorld("codexMeter", {
     ipcRenderer.on("dashboard:state", handler);
     return () => ipcRenderer.removeListener("dashboard:state", handler);
   },
+  onTaskState: (callback) => {
+    const handler = (_event, state) => callback(state);
+    ipcRenderer.on("tasks:state", handler);
+    return () => ipcRenderer.removeListener("tasks:state", handler);
+  },
 });

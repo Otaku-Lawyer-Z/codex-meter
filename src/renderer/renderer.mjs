@@ -5,9 +5,9 @@ const nodes = Object.fromEntries(
     "connection-pill", "connection-text", "updated-at", "error-banner", "error-message",
     "pin-button", "refresh-button", "settings-button", "settings-popover", "login-toggle",
     "interval-select", "hero-limit-name", "plan-badge", "hero-meter", "hero-remaining",
-    "hero-window-label", "hero-countdown", "hero-reset-time", "hero-used", "hero-remain-small",
-    "reset-count", "lifetime-tokens", "lifetime-detail", "streak-days", "streak-detail",
-    "peak-tokens", "usage-chart", "chart-range", "credits-badge", "credit-list",
+    "hero-window-label", "hero-countdown", "hero-reset-time",
+    "lifetime-tokens", "task-count", "running-count", "waiting-count", "project-count", "task-list", "task-updated",
+    "usage-chart", "chart-range", "credits-badge", "credit-list",
     "app-version",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -16,7 +16,6 @@ let settings = {};
 let dashboardState = null;
 
 const compactNumber = new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 2 });
-const fullNumber = new Intl.NumberFormat("zh-CN");
 const dateTime = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 const compactDateTime = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
 const shortDate = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" });
@@ -66,18 +65,68 @@ function renderState(state) {
   nodes["hero-countdown"].dataset.resetAt = heroWindow?.resetsAt || "";
   nodes["hero-countdown"].textContent = heroWindow ? countdown(heroWindow.resetsAt) : "暂无限额窗口";
   nodes["hero-reset-time"].textContent = heroWindow?.resetsAt ? `${dateTime.format(new Date(heroWindow.resetsAt))} 重置` : "—";
-  nodes["hero-used"].textContent = heroWindow ? `${heroWindow.usedPercent}%` : "—";
-  nodes["hero-remain-small"].textContent = heroWindow ? `${heroWindow.remainingPercent}%` : "—";
-
-  nodes["reset-count"].textContent = resetCredits.availableCount ?? "—";
   nodes["lifetime-tokens"].textContent = safeNumber(usage.lifetimeTokens);
-  nodes["lifetime-detail"].textContent = Number.isFinite(usage.lifetimeTokens) ? `${safeNumber(usage.lifetimeTokens, fullNumber)} tokens` : "账户历史总量";
-  nodes["streak-days"].textContent = usage.currentStreakDays ?? "—";
-  nodes["streak-detail"].textContent = Number.isFinite(usage.longestStreakDays) ? `天 · 最长 ${usage.longestStreakDays} 天` : "天";
-  nodes["peak-tokens"].textContent = safeNumber(usage.peakDailyTokens);
 
   renderUsage(usage.daily || []);
   renderCredits(resetCredits);
+}
+
+function elapsedLabel(timestamp) {
+  const seconds = Math.max(0, Math.floor((Date.now() - Number(timestamp)) / 1000));
+  if (seconds >= 86_400) return `${Math.floor(seconds / 86_400)} 天`;
+  if (seconds >= 3_600) return `${Math.floor(seconds / 3_600)} 小时 ${Math.floor((seconds % 3_600) / 60)} 分`;
+  return `${Math.max(1, Math.floor(seconds / 60))} 分钟`;
+}
+
+function updatedLabel(timestamp) {
+  const seconds = Math.max(0, Math.floor((Date.now() - Number(timestamp)) / 1000));
+  if (seconds < 10) return "刚刚更新";
+  if (seconds < 60) return `${seconds} 秒前更新`;
+  if (seconds < 3_600) return `${Math.floor(seconds / 60)} 分前更新`;
+  return `${Math.floor(seconds / 3_600)} 小时前更新`;
+}
+
+function renderTasks(snapshot) {
+  const items = snapshot?.items || [];
+  nodes["task-count"].textContent = snapshot?.total ?? "—";
+  nodes["running-count"].textContent = snapshot?.running ?? "—";
+  nodes["waiting-count"].textContent = snapshot?.waiting ?? "—";
+  nodes["project-count"].textContent = snapshot?.projects ?? "—";
+  nodes["task-updated"].textContent = snapshot?.updatedAt
+    ? `${dateTime.format(new Date(snapshot.updatedAt))} 采集`
+    : "等待首次采集";
+  nodes["task-list"].replaceChildren();
+
+  if (snapshot?.error) {
+    nodes["task-list"].append(element("div", "task-empty", snapshot.error));
+    return;
+  }
+  if (!items.length) {
+    nodes["task-list"].append(element("div", "task-empty", "Codex 当前空闲，没有正在进行的任务。"));
+    return;
+  }
+
+  for (const task of items) {
+    const row = element("div", "task-row");
+    const indicator = element("i", `task-indicator is-${task.status}`);
+    const copy = element("div", "task-copy");
+    const title = element("div", "task-title");
+    title.append(element("strong", "", task.title));
+    row.title = `${task.title}\n项目：${task.cwd}\n当前步骤：${task.stage}`;
+    const meta = element("div", "task-meta");
+    meta.append(
+      element("span", "project-chip", task.project),
+      element("b", "task-stage", task.stage),
+      element("span", "", `已运行 ${elapsedLabel(task.startedAt)}`),
+      element("span", "", updatedLabel(task.updatedAt)),
+    );
+    copy.append(
+      title,
+      meta,
+    );
+    row.append(indicator, copy, element("span", `task-status is-${task.status}`, task.statusLabel));
+    nodes["task-list"].append(row);
+  }
 }
 
 function renderUsage(daily) {
@@ -189,4 +238,6 @@ const initial = await api.getInitial();
 applySettings(initial.settings);
 nodes["app-version"].textContent = `Codex Meter v${initial.version}`;
 renderState(initial.state);
+renderTasks(initial.taskState);
 api.onState(renderState);
+api.onTaskState(renderTasks);
