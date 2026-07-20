@@ -1,0 +1,66 @@
+# Codex Meter
+
+一个可拖到副屏、常驻显示的 Codex 桌面用量仪表盘。它通过本机 `codex app-server` 只读获取真实账户数据，不抓网页、不估算剩余额度，也不会上传 Codex 凭据。
+
+## 功能
+
+- 实时显示主要 Codex 额度的已用/剩余百分比，不占用首屏展示不常用模型桶
+- 显示 5 小时、7 天或其他实际返回周期及精确重置倒计时
+- 显示可用额度重置次数、逐次到期时间和状态
+- 显示累计 token、连续使用天数、单日峰值和最近 28 个活跃日趋势
+- 15 秒到 5 分钟自动刷新，支持手动刷新
+- 窗口置顶、登录自动启动、副屏位置与窗口尺寸记忆
+- 完全本地、只读；界面不提供“消耗重置次数”操作
+
+## 系统要求
+
+- macOS（当前安装包为 Apple Silicon）
+- 已安装并登录 Codex CLI
+- Codex CLI 需要提供 `codex app-server` 与 `account/rateLimits/read` 接口
+
+检查本机环境：
+
+```bash
+codex --version
+codex app-server --help
+```
+
+## 开发运行
+
+```bash
+npm install
+npm start
+```
+
+## 验证与打包
+
+```bash
+npm test
+npm run test:integration
+npm run dist:mac
+```
+
+产物会生成在 `release/`。未签名的本地构建第一次打开时，macOS 可能要求在“系统设置 → 隐私与安全性”中确认。
+
+如果 Codex 安装在非常规位置，可在启动前设置：
+
+```bash
+CODEX_BINARY=/absolute/path/to/codex npm start
+```
+
+## 数据与隐私
+
+应用启动一个本机 Codex App Server 子进程，通过 JSONL-over-stdio 调用：
+
+- `account/rateLimits/read`
+- `account/usage/read`
+
+它不会读取 `auth.json`，不会把凭据写入日志，也不会向第三方服务发送数据。设置文件只保存窗口位置、置顶状态、启动偏好和刷新频率。
+
+## 当前边界
+
+Codex App Server 目前属于实验性接口，未来 Codex CLI 版本可能调整协议。应用会把连接问题明确显示在界面，不会用本地 token 统计伪装成账户剩余额度。
+
+## License
+
+MIT

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Codex Meter</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="titlebar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <span></span>
+          </div>
+          <div>
+            <div class="brand-name">CODEX METER</div>
+            <div class="brand-subtitle">Local usage monitor</div>
+          </div>
+        </div>
+
+        <div class="titlebar-actions">
+          <div id="connection-pill" class="connection-pill is-connecting">
+            <span class="status-dot"></span>
+            <span id="connection-text">正在连接</span>
+          </div>
+          <button id="pin-button" class="icon-button" type="button" aria-pressed="false" title="窗口置顶">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15.4 4.2 4.4 4.4-2 2-1.2-1.2-3.7 3.7v3l-1.5 1.5-2.2-4-3.8-2.1L7 9.9h3l3.7-3.7-1.2-1.1 2-2Z"/><path d="m9 15-5 5"/></svg>
+          </button>
+          <button id="refresh-button" class="icon-button" type="button" title="立即刷新">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+          </button>
+          <button id="settings-button" class="icon-button" type="button" aria-expanded="false" title="偏好设置">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>
+          </button>
+        </div>
+
+        <aside id="settings-popover" class="settings-popover" hidden>
+          <div class="popover-title">显示偏好</div>
+          <label class="setting-row">
+            <span><strong>自动启动</strong><small>登录 Mac 后打开</small></span>
+            <input id="login-toggle" type="checkbox" />
+          </label>
+          <label class="setting-row setting-select-row">
+            <span><strong>刷新频率</strong><small>账户数据自动更新</small></span>
+            <select id="interval-select">
+              <option value="15">15 秒</option>
+              <option value="30">30 秒</option>
+              <option value="60">1 分钟</option>
+              <option value="300">5 分钟</option>
+            </select>
+          </label>
+          <p>窗口位置会自动记住。所有数据仅在本机读取。</p>
+        </aside>
+      </header>
+
+      <main>
+        <section class="overview-header">
+          <div>
+            <p class="eyebrow">ACCOUNT OVERVIEW</p>
+            <h1>Codex 用量一览</h1>
+          </div>
+          <div class="updated-copy">
+            <span>最后更新</span>
+            <strong id="updated-at">等待首次同步</strong>
+          </div>
+        </section>
+
+        <div id="error-banner" class="error-banner" hidden>
+          <span class="error-icon">!</span>
+          <span id="error-message"></span>
+        </div>
+
+        <section class="hero-grid">
+          <article class="hero-card remaining-card">
+            <div class="card-heading">
+              <div>
+                <span class="card-kicker">主要额度</span>
+                <h2 id="hero-limit-name">Codex</h2>
+              </div>
+              <span id="plan-badge" class="plan-badge">—</span>
+            </div>
+            <div class="meter-wrap">
+              <div id="hero-meter" class="hero-meter" style="--used: 0">
+                <div class="hero-meter-inner">
+                  <strong id="hero-remaining">—</strong>
+                  <span>剩余</span>
+                </div>
+              </div>
+              <div class="hero-copy">
+                <div class="window-label" id="hero-window-label">额度周期</div>
+                <div class="reset-countdown" id="hero-countdown">正在读取账户信息</div>
+                <div class="reset-time" id="hero-reset-time">—</div>
+                <div class="usage-split">
+                  <span><i class="used-key"></i><b id="hero-used">—</b> 已用</span>
+                  <span><i class="remain-key"></i><b id="hero-remain-small">—</b> 可用</span>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <div class="stats-grid">
+            <article class="stat-card reset-stat">
+              <span class="stat-label">可用重置</span>
+              <strong id="reset-count">—</strong>
+              <span class="stat-unit">次完整额度重置</span>
+              <div class="stat-accent"></div>
+            </article>
+            <article class="stat-card">
+              <span class="stat-label">累计 Tokens</span>
+              <strong id="lifetime-tokens">—</strong>
+              <span class="stat-unit" id="lifetime-detail">账户历史总量</span>
+            </article>
+            <article class="stat-card">
+              <span class="stat-label">连续使用</span>
+              <strong id="streak-days">—</strong>
+              <span class="stat-unit" id="streak-detail">天</span>
+            </article>
+            <article class="stat-card">
+              <span class="stat-label">单日峰值</span>
+              <strong id="peak-tokens">—</strong>
+              <span class="stat-unit">tokens</span>
+            </article>
+          </div>
+        </section>
+
+        <section class="lower-grid">
+          <article class="panel usage-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">TOKEN ACTIVITY</p>
+                <h2>最近 28 个活跃日</h2>
+              </div>
+              <span id="chart-range" class="section-note">—</span>
+            </div>
+            <div id="usage-chart" class="usage-chart" aria-label="每日 token 用量柱状图">
+              <div class="chart-empty">正在读取每日用量…</div>
+            </div>
+          </article>
+
+          <article class="panel credits-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">RESET CREDITS</p>
+                <h2>重置明细</h2>
+              </div>
+              <span id="credits-badge" class="credits-badge">—</span>
+            </div>
+            <div id="credit-list" class="credit-list">
+              <div class="chart-empty">正在读取重置记录…</div>
+            </div>
+          </article>
+        </section>
+      </main>
+
+      <footer>
+        <span><i class="privacy-dot"></i>只读连接 · 凭据不会离开本机</span>
+        <span id="app-version">Codex Meter</span>
+      </footer>
+    </div>
+    <script type="module" src="./renderer.mjs"></script>
+  </body>
+</html>

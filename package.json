@@ -1,0 +1,76 @@
+{
+  "name": "codex-usage-dashboard",
+  "productName": "Codex Meter",
+  "version": "0.2.0",
+  "description": "A private, read-only desktop dashboard for live Codex rate limits, reset credits, and token usage.",
+  "type": "module",
+  "main": "src/main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "test:integration": "node scripts/smoke-app-server.mjs",
+    "pack:mac": "electron-builder --mac dir",
+    "dist:mac": "electron-builder --mac dmg zip"
+  },
+  "keywords": [
+    "codex",
+    "usage",
+    "rate-limit",
+    "dashboard",
+    "electron"
+  ],
+  "author": "Co-effort Zeng",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "electron": "43.1.1",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.coeffort.codexmeter",
+    "productName": "Codex Meter",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.png",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "artifactName": "Codex-Meter-${version}-${arch}.${ext}",
+      "identity": null,
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "Codex Meter ${version}",
+      "window": {
+        "width": 560,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 155,
+          "y": 190,
+          "type": "file"
+        },
+        {
+          "x": 405,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
+  }
+}
