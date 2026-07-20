@@ -2,6 +2,8 @@
 
 一个可拖到副屏、常驻显示的 Codex 桌面用量仪表盘。它通过本机 `codex app-server` 只读获取真实账户数据，不抓网页、不估算剩余额度，也不会上传 Codex 凭据。
 
+<img width="2048" height="1476" alt="img_v3_0213p_b1d649bc-fb57-48da-88ab-a6074ee9ec3g" src="https://github.com/user-attachments/assets/3cd84efb-4c36-41b3-a39f-c7bc1ab79d5e" />
+
 ## 功能
 
 - 实时显示主要 Codex 额度的剩余百分比，不占用首屏展示不常用模型桶
