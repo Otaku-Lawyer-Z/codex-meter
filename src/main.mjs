@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CodexAppServerClient } from "./lib/codex-client.mjs";
 import { normalizeDashboardData } from "./lib/normalize.mjs";
+import { readCodexTaskSnapshot } from "./lib/task-monitor.mjs";
 import { SettingsStore } from "./lib/settings.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -14,12 +15,24 @@ let store;
 let refreshTimer;
 let reconnectTimer;
 let boundsSaveTimer;
+let taskTimer;
 let refreshing = null;
+let taskRefreshing = null;
 
 let state = {
   connection: "connecting",
   error: null,
   data: null,
+  updatedAt: null,
+};
+
+let taskState = {
+  items: [],
+  total: 0,
+  running: 0,
+  waiting: 0,
+  projects: 0,
+  error: null,
   updatedAt: null,
 };
 
@@ -30,6 +43,40 @@ function pushState() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("dashboard:state", state);
   }
+}
+
+function pushTaskState() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("tasks:state", taskState);
+  }
+}
+
+async function refreshTasks() {
+  if (taskRefreshing) return taskRefreshing;
+  taskRefreshing = (async () => {
+    try {
+      taskState = await readCodexTaskSnapshot();
+    } catch (error) {
+      taskState = {
+        ...taskState,
+        error: `Codex 任务状态暂时不可用：${error?.message || String(error)}`,
+        updatedAt: Date.now(),
+      };
+    } finally {
+      pushTaskState();
+      taskRefreshing = null;
+    }
+    return taskState;
+  })();
+  return taskRefreshing;
+}
+
+function scheduleTaskRefresh(delay = 0) {
+  clearTimeout(taskTimer);
+  taskTimer = setTimeout(async () => {
+    await refreshTasks();
+    scheduleTaskRefresh(2_000);
+  }, delay);
 }
 
 async function connect() {
@@ -174,10 +221,14 @@ function createWindow() {
 function registerIpc() {
   ipcMain.handle("dashboard:initial", () => ({
     state,
+    taskState,
     settings: store.get(),
     version: app.getVersion(),
   }));
-  ipcMain.handle("dashboard:refresh", () => refreshData());
+  ipcMain.handle("dashboard:refresh", async () => {
+    await Promise.all([refreshData(), refreshTasks()]);
+    return state;
+  });
   ipcMain.handle("dashboard:set-always-on-top", async (_event, enabled) => {
     const value = Boolean(enabled);
     mainWindow.setAlwaysOnTop(value, value ? "floating" : "normal");
@@ -202,6 +253,7 @@ app.whenReady().then(async () => {
   await store.load();
   registerIpc();
   createWindow();
+  scheduleTaskRefresh(0);
   connect().then(() => scheduleRefresh(0)).catch(handleConnectionError);
 
   app.on("activate", () => {
@@ -216,5 +268,6 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   clearTimeout(refreshTimer);
   clearTimeout(reconnectTimer);
+  clearTimeout(taskTimer);
   client?.stop();
 });

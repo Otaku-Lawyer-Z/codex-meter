@@ -73,7 +73,7 @@ export class CodexAppServerClient extends EventEmitter {
       clientInfo: {
         name: "codex_usage_dashboard",
         title: "Codex Meter",
-        version: "0.2.0",
+        version: "0.3.1",
       },
       capabilities: {
         experimentalApi: true,
