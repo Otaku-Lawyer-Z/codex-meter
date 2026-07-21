@@ -8,6 +8,38 @@ import readline from "node:readline";
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
+async function settleAccountRequests(client) {
+  const [rateResult, usageResult] = await Promise.allSettled([
+    client.request("account/rateLimits/read", null),
+    client.request("account/usage/read", null),
+  ]);
+  return { rateResult, usageResult };
+}
+
+function preferFulfilled(primary, fallback) {
+  return primary.status === "fulfilled" ? primary : fallback;
+}
+
+export async function readAccountSnapshotWithRecovery({ client, reconnect }) {
+  const first = await settleAccountRequests(client);
+  if (first.rateResult.status === "fulfilled" && first.usageResult.status === "fulfilled") {
+    return { ...first, reconnected: false, recoveryError: null };
+  }
+
+  try {
+    const recoveredClient = await reconnect();
+    const second = await settleAccountRequests(recoveredClient);
+    return {
+      rateResult: preferFulfilled(second.rateResult, first.rateResult),
+      usageResult: preferFulfilled(second.usageResult, first.usageResult),
+      reconnected: true,
+      recoveryError: null,
+    };
+  } catch (error) {
+    return { ...first, reconnected: true, recoveryError: error };
+  }
+}
+
 export async function resolveCodexBinary() {
   const candidates = [
     process.env.CODEX_BINARY,
@@ -73,7 +105,7 @@ export class CodexAppServerClient extends EventEmitter {
       clientInfo: {
         name: "codex_usage_dashboard",
         title: "Codex Meter",
-        version: "0.3.2",
+        version: "0.3.3",
       },
       capabilities: {
         experimentalApi: true,

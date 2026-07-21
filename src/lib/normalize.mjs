@@ -106,6 +106,7 @@ function normalizeUsage(payload) {
 }
 
 function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -137,6 +138,7 @@ export function normalizeDashboardData(ratePayload, usagePayload, now = Date.now
 }
 
 export function formatCompactNumber(value) {
+  if (value === null || value === undefined || value === "") return "—";
   if (!Number.isFinite(Number(value))) return "—";
   return new Intl.NumberFormat("zh-CN", {
     notation: "compact",
@@ -145,6 +147,7 @@ export function formatCompactNumber(value) {
 }
 
 export function formatFullNumber(value) {
+  if (value === null || value === undefined || value === "") return "—";
   if (!Number.isFinite(Number(value))) return "—";
   return new Intl.NumberFormat("zh-CN").format(Number(value));
 }

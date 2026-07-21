@@ -21,6 +21,7 @@ const compactDateTime = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day
 const shortDate = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" });
 
 function safeNumber(value, formatter = compactNumber) {
+  if (value === null || value === undefined || value === "") return "—";
   return Number.isFinite(Number(value)) ? formatter.format(Number(value)) : "—";
 }
 

@@ -4,6 +4,8 @@ import {
   clampPercent,
   durationLabel,
   formatCountdown,
+  formatCompactNumber,
+  formatFullNumber,
   normalizeDashboardData,
 } from "../src/lib/normalize.mjs";
 
@@ -66,4 +68,11 @@ test("formatCountdown produces stable Chinese countdowns", () => {
   const now = 1_800_000_000_000;
   assert.equal(formatCountdown(now + (2 * 1440 + 3 * 60 + 4) * 60_000, now), "2 天 3 小时 4 分");
   assert.equal(formatCountdown(now - 1, now), "正在重置");
+});
+
+test("missing token values are not rendered as zero", () => {
+  const result = normalizeDashboardData({ rateLimitsByLimitId: {} }, null);
+  assert.equal(result.usage.lifetimeTokens, null);
+  assert.equal(formatCompactNumber(null), "—");
+  assert.equal(formatFullNumber(undefined), "—");
 });
