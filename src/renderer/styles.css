@@ -191,16 +191,22 @@ h2 { font-size: 16px; font-weight: 650; }
 .plan-badge, .credits-badge { padding: 5px 9px; border: 1px solid rgba(139,231,194,.22); border-radius: 999px; color: var(--mint); background: rgba(139,231,194,.07); font-size: 11px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 
 .meter-wrap { height: 158px; display: grid; grid-template-columns: 165px 1fr; align-items: center; gap: 19px; }
+@property --remaining {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
 .hero-meter {
-  --used: 0;
+  --remaining: 0;
   width: 140px;
   aspect-ratio: 1;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: conic-gradient(var(--mint) 0 calc(var(--used) * 1%), rgba(139, 167, 190, .1) calc(var(--used) * 1%) 100%);
+  background: conic-gradient(var(--mint) 0 calc(var(--remaining) * 1%), rgba(139, 167, 190, .1) calc(var(--remaining) * 1%) 100%);
   position: relative;
   box-shadow: 0 0 40px rgba(89,212,170,.06);
+  transition: --remaining .45s ease;
 }
 .hero-meter::before { content: ""; position: absolute; inset: 12px; border-radius: 50%; background: #0d1b2b; border: 1px solid var(--line); }
 .hero-meter-inner { position: relative; display: flex; flex-direction: column; align-items: center; }

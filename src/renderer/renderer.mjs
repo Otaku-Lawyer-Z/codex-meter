@@ -60,7 +60,7 @@ function renderState(state) {
 
   nodes["hero-limit-name"].textContent = heroLimit?.name || "Codex";
   nodes["plan-badge"].textContent = heroLimit?.plan || "—";
-  nodes["hero-meter"].style.setProperty("--used", heroWindow?.usedPercent ?? 0);
+  nodes["hero-meter"].style.setProperty("--remaining", heroWindow?.remainingPercent ?? 0);
   nodes["hero-remaining"].textContent = heroWindow ? `${heroWindow.remainingPercent}%` : "—";
   nodes["hero-window-label"].textContent = heroWindow?.label || "额度周期";
   nodes["hero-countdown"].dataset.resetAt = heroWindow?.resetsAt || "";
