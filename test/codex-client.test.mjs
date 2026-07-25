@@ -1,10 +1,34 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readAccountSnapshotWithRecovery, resolveCodexBinary } from "../src/lib/codex-client.mjs";
+import {
+  buildCodexSpawnEnvironment,
+  readAccountSnapshotWithRecovery,
+  resolveCodexBinary,
+} from "../src/lib/codex-client.mjs";
 
 test("resolveCodexBinary finds an executable Codex installation", async () => {
   const binary = await resolveCodexBinary();
   assert.match(binary, /codex$/);
+});
+
+test("Codex spawn environment restores executable paths missing from login items", () => {
+  const env = buildCodexSpawnEnvironment({
+    binary: "/opt/homebrew/bin/codex",
+    env: {
+      HOME: "/Users/example",
+      PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+    },
+  });
+
+  assert.deepEqual(env.PATH.split(":"), [
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+  ]);
+  assert.equal(env.HOME, "/Users/example");
 });
 
 function fakeClient(responses) {
