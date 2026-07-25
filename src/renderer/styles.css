@@ -203,7 +203,10 @@ h2 { font-size: 16px; font-weight: 650; }
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: conic-gradient(var(--mint) 0 calc(var(--remaining) * 1%), rgba(139, 167, 190, .1) calc(var(--remaining) * 1%) 100%);
+  background: conic-gradient(
+    rgba(139, 167, 190, .1) 0 calc((100 - var(--remaining)) * 1%),
+    var(--mint) calc((100 - var(--remaining)) * 1%) 100%
+  );
   position: relative;
   box-shadow: 0 0 40px rgba(89,212,170,.06);
   transition: --remaining .45s ease;

@@ -7,6 +7,10 @@ import path from "node:path";
 import readline from "node:readline";
 
 const REQUEST_TIMEOUT_MS = 20_000;
+const COMMON_EXECUTABLE_DIRECTORIES = [
+  "/opt/homebrew/bin",
+  "/usr/local/bin",
+];
 
 async function settleAccountRequests(client) {
   const [rateResult, usageResult] = await Promise.allSettled([
@@ -62,6 +66,24 @@ export async function resolveCodexBinary() {
   return "codex";
 }
 
+export function buildCodexSpawnEnvironment({ binary, env = process.env } = {}) {
+  const directories = [];
+
+  if (binary && path.isAbsolute(binary)) {
+    directories.push(path.dirname(binary));
+  }
+
+  directories.push(
+    ...COMMON_EXECUTABLE_DIRECTORIES,
+    ...(env.PATH || "").split(path.delimiter),
+  );
+
+  return {
+    ...env,
+    PATH: [...new Set(directories.filter(Boolean))].join(path.delimiter),
+  };
+}
+
 export class CodexAppServerClient extends EventEmitter {
   constructor({ binary, requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
     super();
@@ -82,7 +104,7 @@ export class CodexAppServerClient extends EventEmitter {
 
     const child = spawn(this.binary, ["app-server", "--stdio"], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: process.env,
+      env: buildCodexSpawnEnvironment({ binary: this.binary }),
     });
     this.process = child;
 
@@ -105,7 +127,7 @@ export class CodexAppServerClient extends EventEmitter {
       clientInfo: {
         name: "codex_usage_dashboard",
         title: "Codex Meter",
-        version: "0.3.4",
+        version: "0.3.6",
       },
       capabilities: {
         experimentalApi: true,
