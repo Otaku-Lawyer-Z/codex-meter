@@ -8,6 +8,10 @@ const execFileAsync = promisify(execFile);
 const tailCache = new Map();
 const MAX_TAIL_BYTES = 768 * 1024;
 const MAX_ACTIVE_AGE_MS = 12 * 60 * 60 * 1000;
+const MAX_IDLE_WITHOUT_ACTIVITY_MS = 5 * 60 * 1000;
+const MAX_PENDING_TOOL_AGE_MS = 30 * 60 * 1000;
+const MAX_FAILED_AGE_MS = 5 * 60 * 1000;
+const RUNTIME_CLOSED_GRACE_MS = 15 * 1000;
 const STATE_DB_RETRY_DELAYS_MS = [0, 250, 750];
 
 const THREAD_QUERY = `
@@ -55,6 +59,11 @@ function lastIndex(events, predicate) {
   return -1;
 }
 
+function isFinalAnswer(event) {
+  return ["agent_message", "message"].includes(payloadType(event))
+    && event?.payload?.phase === "final_answer";
+}
+
 function unresolvedCall(events, names) {
   const outputs = new Set(
     events
@@ -94,24 +103,39 @@ function currentStage(events) {
   if (["custom_tool_call_output", "function_call_output"].includes(type)) return "正在整理工具结果";
   if (type === "patch_apply_end" || type === "file_change") return "正在修改项目文件";
   if (type === "agent_message" || (type === "message" && last?.payload?.phase === "commentary")) return "正在汇报进展";
-  if (["error", "turn_aborted"].includes(type)) return "任务出现异常";
+  if (type === "error") return "任务出现异常";
   return "正在处理任务";
 }
 
-export function analyseThread(thread, events, now = Date.now()) {
+export function analyseThread(thread, events, now = Date.now(), { runtimeActive = null } = {}) {
   const latestUserIndex = lastIndex(events, (event) => payloadType(event) === "user_message");
   const latestCompleteIndex = lastIndex(events, (event) => payloadType(event) === "task_complete");
+  const latestAbortIndex = lastIndex(events, (event) => payloadType(event) === "turn_aborted");
+  const latestFinalAnswerIndex = lastIndex(events, isFinalAnswer);
+  const latestTerminalIndex = Math.max(latestCompleteIndex, latestAbortIndex, latestFinalAnswerIndex);
   const updatedAt = eventTime(events.at(-1)) || Number(thread.updatedAtMs) || 0;
-  const hasOpenTurn = latestUserIndex > latestCompleteIndex
-    || (latestUserIndex === -1 && latestCompleteIndex === -1 && now - updatedAt <= MAX_ACTIVE_AGE_MS);
+  const inactiveFor = Math.max(0, now - updatedAt);
+  const hasOpenTurn = latestUserIndex > latestTerminalIndex
+    || (latestUserIndex === -1 && latestTerminalIndex === -1 && inactiveFor <= MAX_ACTIVE_AGE_MS);
   if (!hasOpenTurn) return null;
 
   const waitingForInput = unresolvedCall(events, ["request_user_input"]);
   const waitingForApproval = unresolvedCall(events, ["approval"]);
-  const lastErrorIndex = lastIndex(events, (event) => ["error", "turn_aborted"].includes(payloadType(event)));
-  const failed = lastErrorIndex > Math.max(latestUserIndex, latestCompleteIndex)
-    && lastErrorIndex === events.length - 1;
-  if (!waitingForInput && !waitingForApproval && !failed && now - updatedAt > MAX_ACTIVE_AGE_MS) return null;
+  const pendingToolCall = unresolvedCall(events, [""]);
+  const lastErrorIndex = lastIndex(events, (event) => payloadType(event) === "error");
+  const lastMeaningfulIndex = lastIndex(
+    events,
+    (event) => !["token_count", "usage_limit"].includes(payloadType(event)),
+  );
+  const failed = lastErrorIndex > Math.max(latestUserIndex, latestTerminalIndex)
+    && lastErrorIndex === lastMeaningfulIndex;
+
+  if (runtimeActive === false && inactiveFor > RUNTIME_CLOSED_GRACE_MS) return null;
+  if (failed && inactiveFor > MAX_FAILED_AGE_MS) return null;
+  if (pendingToolCall && inactiveFor > MAX_PENDING_TOOL_AGE_MS) return null;
+  if (!waitingForInput && !waitingForApproval && !pendingToolCall
+    && inactiveFor > MAX_IDLE_WITHOUT_ACTIVITY_MS) return null;
+  if (inactiveFor > MAX_ACTIVE_AGE_MS) return null;
 
   const startEvent = latestUserIndex >= 0 ? events[latestUserIndex] : events[0];
   const status = failed ? "failed" : waitingForInput || waitingForApproval ? "waiting" : "running";
@@ -134,9 +158,22 @@ export function analyseThread(thread, events, now = Date.now()) {
   };
 }
 
-export function buildTaskSnapshot(threads, eventsByThread, { updatedAt = Date.now() } = {}) {
+export function buildTaskSnapshot(
+  threads,
+  eventsByThread,
+  { updatedAt = Date.now(), activeRolloutPaths = null } = {},
+) {
   const items = threads
-    .map((thread) => analyseThread(thread, eventsByThread.get(thread.id) || [], updatedAt))
+    .map((thread) => analyseThread(
+      thread,
+      eventsByThread.get(thread.id) || [],
+      updatedAt,
+      {
+        runtimeActive: activeRolloutPaths instanceof Set && thread.rolloutPath
+          ? activeRolloutPaths.has(path.resolve(thread.rolloutPath))
+          : null,
+      },
+    ))
     .filter(Boolean)
     .sort((a, b) => {
       const rank = { running: 0, waiting: 1, failed: 2 };
@@ -151,6 +188,36 @@ export function buildTaskSnapshot(threads, eventsByThread, { updatedAt = Date.no
     updatedAt,
     error: null,
   };
+}
+
+export function parseOpenCodexRolloutPaths(output) {
+  const openPaths = new Set();
+  let command = "";
+
+  for (const line of String(output || "").split("\n")) {
+    const field = line.slice(0, 1);
+    const value = line.slice(1);
+    if (field === "p") command = "";
+    if (field === "c") command = value.toLowerCase();
+    if (field === "n" && command === "codex" && value.endsWith(".jsonl")) {
+      openPaths.add(path.resolve(value));
+    }
+  }
+
+  return openPaths;
+}
+
+async function readOpenCodexRolloutPaths() {
+  try {
+    const { stdout } = await execFileAsync("/usr/sbin/lsof", ["-n", "-c", "codex", "-F", "pcn"], {
+      encoding: "utf8",
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    return parseOpenCodexRolloutPaths(stdout);
+  } catch (error) {
+    if (Number(error?.code) === 1) return parseOpenCodexRolloutPaths(error?.stdout);
+    return null;
+  }
 }
 
 export function isTransientStateDbError(error) {
@@ -250,6 +317,7 @@ export async function readCodexTaskSnapshot() {
     });
     return JSON.parse(stdout || "[]");
   });
+  const activeRolloutPathsPromise = readOpenCodexRolloutPaths();
   const eventsByThread = new Map();
   await Promise.all(threads.map(async (thread) => {
     try {
@@ -258,5 +326,7 @@ export async function readCodexTaskSnapshot() {
       eventsByThread.set(thread.id, []);
     }
   }));
-  return buildTaskSnapshot(threads, eventsByThread);
+  return buildTaskSnapshot(threads, eventsByThread, {
+    activeRolloutPaths: await activeRolloutPathsPromise,
+  });
 }

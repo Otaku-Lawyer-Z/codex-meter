@@ -4,6 +4,7 @@ import {
   analyseThread,
   buildTaskSnapshot,
   isTransientStateDbError,
+  parseOpenCodexRolloutPaths,
   parseJsonLines,
   recoverTaskSnapshot,
   retryTransientStateDb,
@@ -59,6 +60,56 @@ test("analyseThread removes a task after task_complete", () => {
     event(1_800_000_010_000, "task_complete"),
   ];
   assert.equal(analyseThread(thread, events, 1_800_000_020_000), null);
+});
+
+test("analyseThread removes a user-interrupted task immediately", () => {
+  const events = [
+    event(1_800_000_000_000, "user_message"),
+    event(1_800_000_010_000, "turn_aborted", { reason: "interrupted" }),
+  ];
+  assert.equal(analyseThread(thread, events, 1_800_000_020_000), null);
+});
+
+test("analyseThread treats a final answer as terminal when task_complete is missing", () => {
+  const events = [
+    event(1_800_000_000_000, "user_message"),
+    event(1_800_000_010_000, "agent_message", { phase: "final_answer" }),
+  ];
+  assert.equal(analyseThread(thread, events, 1_800_000_020_000), null);
+});
+
+test("analyseThread removes an inactive runtime after a short race-condition grace period", () => {
+  const events = [event(1_800_000_000_000, "user_message")];
+  assert.notEqual(
+    analyseThread(thread, events, 1_800_000_010_000, { runtimeActive: false }),
+    null,
+  );
+  assert.equal(
+    analyseThread(thread, events, 1_800_000_020_000, { runtimeActive: false }),
+    null,
+  );
+});
+
+test("parseOpenCodexRolloutPaths only accepts JSONL files held by Codex", () => {
+  const output = [
+    "p101",
+    "ccodex",
+    "f21",
+    "n/Users/example/.codex/sessions/active.jsonl",
+    "p102",
+    "cnode",
+    "f22",
+    "n/Users/example/.codex/sessions/not-codex.jsonl",
+    "p103",
+    "ccodex",
+    "f23",
+    "n/Users/example/.codex/state_5.sqlite",
+  ].join("\n");
+
+  assert.deepEqual(
+    [...parseOpenCodexRolloutPaths(output)],
+    ["/Users/example/.codex/sessions/active.jsonl"],
+  );
 });
 
 test("buildTaskSnapshot counts active tasks and distinct projects", () => {
