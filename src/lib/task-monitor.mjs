@@ -64,6 +64,12 @@ function isFinalAnswer(event) {
     && event?.payload?.phase === "final_answer";
 }
 
+function isUserMessage(event) {
+  return payloadType(event) === "user_message"
+    || (event?.type === "response_item" && payloadType(event) === "message"
+      && event?.payload?.role === "user");
+}
+
 function unresolvedCall(events, names) {
   const outputs = new Set(
     events
@@ -108,26 +114,35 @@ function currentStage(events) {
 }
 
 export function analyseThread(thread, events, now = Date.now(), { runtimeActive = null } = {}) {
-  const latestUserIndex = lastIndex(events, (event) => payloadType(event) === "user_message");
+  const latestUserIndex = lastIndex(events, isUserMessage);
+  const latestStartIndex = lastIndex(events, (event) => payloadType(event) === "task_started");
   const latestCompleteIndex = lastIndex(events, (event) => payloadType(event) === "task_complete");
   const latestAbortIndex = lastIndex(events, (event) => payloadType(event) === "turn_aborted");
   const latestFinalAnswerIndex = lastIndex(events, isFinalAnswer);
   const latestTerminalIndex = Math.max(latestCompleteIndex, latestAbortIndex, latestFinalAnswerIndex);
   const updatedAt = eventTime(events.at(-1)) || Number(thread.updatedAtMs) || 0;
   const inactiveFor = Math.max(0, now - updatedAt);
-  const hasOpenTurn = latestUserIndex > latestTerminalIndex
-    || (latestUserIndex === -1 && latestTerminalIndex === -1 && inactiveFor <= MAX_ACTIVE_AGE_MS);
+  const hasOpenTurn = Math.max(latestUserIndex, latestStartIndex) > latestTerminalIndex
+    || (latestUserIndex === -1 && latestStartIndex === -1
+      && latestTerminalIndex === -1 && inactiveFor <= MAX_ACTIVE_AGE_MS);
   if (!hasOpenTurn) return null;
 
-  const waitingForInput = unresolvedCall(events, ["request_user_input"]);
-  const waitingForApproval = unresolvedCall(events, ["approval"]);
-  const pendingToolCall = unresolvedCall(events, [""]);
-  const lastErrorIndex = lastIndex(events, (event) => payloadType(event) === "error");
+  // Keep elapsed time and pending calls within the current turn, including when
+  // the user sends another message while that turn is still running.
+  const firstUserIndex = events.findIndex((event, index) => index > latestTerminalIndex && isUserMessage(event));
+  const startIndex = latestStartIndex > latestTerminalIndex
+    ? latestStartIndex
+    : firstUserIndex >= 0 ? firstUserIndex : latestTerminalIndex + 1;
+  const turnEvents = events.slice(startIndex);
+  const waitingForInput = unresolvedCall(turnEvents, ["request_user_input"]);
+  const waitingForApproval = unresolvedCall(turnEvents, ["approval"]);
+  const pendingToolCall = unresolvedCall(turnEvents, [""]);
+  const lastErrorIndex = lastIndex(turnEvents, (event) => payloadType(event) === "error");
   const lastMeaningfulIndex = lastIndex(
-    events,
+    turnEvents,
     (event) => !["token_count", "usage_limit"].includes(payloadType(event)),
   );
-  const failed = lastErrorIndex > Math.max(latestUserIndex, latestTerminalIndex)
+  const failed = lastErrorIndex > lastIndex(turnEvents, isUserMessage)
     && lastErrorIndex === lastMeaningfulIndex;
 
   if (runtimeActive === false && inactiveFor > RUNTIME_CLOSED_GRACE_MS) return null;
@@ -137,7 +152,7 @@ export function analyseThread(thread, events, now = Date.now(), { runtimeActive 
     && inactiveFor > MAX_IDLE_WITHOUT_ACTIVITY_MS) return null;
   if (inactiveFor > MAX_ACTIVE_AGE_MS) return null;
 
-  const startEvent = latestUserIndex >= 0 ? events[latestUserIndex] : events[0];
+  const startEvent = turnEvents[0];
   const status = failed ? "failed" : waitingForInput || waitingForApproval ? "waiting" : "running";
   const labels = { running: "执行中", waiting: "等待中", failed: "异常" };
   const title = String(thread.title || thread.agentNickname || thread.firstUserMessage || "未命名 Codex 任务")
@@ -151,7 +166,7 @@ export function analyseThread(thread, events, now = Date.now(), { runtimeActive 
     cwd: thread.cwd || "",
     status,
     statusLabel: labels[status],
-    stage: waitingForInput ? "等待你的回复" : waitingForApproval ? "等待你的确认" : currentStage(events),
+    stage: waitingForInput ? "等待你的回复" : waitingForApproval ? "等待你的确认" : currentStage(turnEvents),
     startedAt: eventTime(startEvent) || Number(thread.updatedAtMs) || now,
     updatedAt,
     isSubagent: Boolean(thread.agentNickname || thread.agentRole),

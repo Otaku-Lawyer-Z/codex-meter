@@ -7,7 +7,7 @@ const nodes = Object.fromEntries(
     "interval-select", "hero-limit-name", "plan-badge", "hero-meter", "hero-remaining",
     "hero-window-label", "hero-countdown", "hero-reset-time",
     "lifetime-tokens", "task-count", "running-count", "waiting-count", "project-count", "task-list", "task-updated",
-    "usage-chart", "chart-range", "credits-badge", "credit-list",
+    "usage-chart", "chart-range", "usage-through", "credits-badge", "credit-list",
     "app-version",
   ].map((id) => [id, document.getElementById(id)]),
 );
@@ -143,6 +143,9 @@ function renderTasks(snapshot) {
 function renderUsage(daily) {
   nodes["usage-chart"].replaceChildren();
   const visible = daily.slice(-28);
+  nodes["usage-through"].textContent = visible.length
+    ? `统计截至 ${visible.at(-1).date}`
+    : "等待服务器返回统计日期";
   if (!visible.length) {
     nodes["usage-chart"].append(emptyMessage("每日 token 统计暂不可用。"));
     nodes["chart-range"].textContent = "—";

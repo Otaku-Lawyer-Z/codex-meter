@@ -272,6 +272,7 @@ h2 { font-size: 16px; font-weight: 650; }
 .content-section { margin-top: 24px; }
 .section-heading, .panel-heading { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 12px; }
 .section-note { color: var(--muted-2); font-size: 11px; }
+.usage-through { margin: 6px 0 0; color: var(--muted-2); font-size: 11px; }
 .limit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
 .limit-card { padding: 18px 19px; border-radius: 17px; }
 .limit-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 17px; }

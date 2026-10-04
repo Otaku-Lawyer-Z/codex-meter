@@ -1,7 +1,7 @@
 {
   "name": "codex-usage-dashboard",
   "productName": "Codex Meter",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "A private, read-only desktop dashboard for live Codex usage, reset details, and active task status.",
   "type": "module",
   "main": "src/main.mjs",

@@ -54,6 +54,67 @@ test("analyseThread recognizes unresolved user input as waiting", () => {
   assert.equal(result.stage, "等待你的回复");
 });
 
+test("a new task_started reopens a completed conversation before user_message arrives", () => {
+  const events = [
+    event(1_800_000_000_000, "user_message"),
+    event(1_800_000_001_000, "task_complete"),
+    event(1_800_000_010_000, "task_started"),
+    event(1_800_000_011_000, "reasoning"),
+  ];
+  const result = analyseThread(thread, events, 1_800_000_020_000);
+  assert.equal(result.status, "running");
+  assert.equal(result.startedAt, 1_800_000_010_000);
+});
+
+test("response_item user messages reopen a completed conversation", () => {
+  const events = [
+    event(1_800_000_001_000, "task_complete"),
+    { timestamp: new Date(1_800_000_010_000).toISOString(), type: "response_item",
+      payload: { type: "message", role: "user" } },
+    event(1_800_000_011_000, "reasoning"),
+  ];
+  assert.equal(analyseThread(thread, events, 1_800_000_020_000).status, "running");
+});
+
+test("new turns discard unresolved input requests from earlier turns", () => {
+  const events = [
+    event(1_800_000_000_000, "user_message"),
+    event(1_800_000_001_000, "function_call", { name: "request_user_input", call_id: "old-input" }),
+    event(1_800_000_002_000, "task_complete"),
+    event(1_800_000_010_000, "task_started"),
+    { timestamp: new Date(1_800_000_011_000).toISOString(), type: "response_item",
+      payload: { type: "message", role: "user" } },
+    event(1_800_000_012_000, "reasoning"),
+  ];
+  const result = analyseThread(thread, events, 1_800_000_020_000);
+  assert.equal(result.status, "running");
+  assert.equal(result.stage, "正在分析任务");
+});
+
+test("current-turn input requests still show waiting after a completed turn", () => {
+  const events = [
+    event(1_800_000_001_000, "task_complete"),
+    event(1_800_000_010_000, "task_started"),
+    event(1_800_000_011_000, "function_call", { name: "request_user_input", call_id: "new-input" }),
+  ];
+  const result = analyseThread(thread, events, 1_800_000_020_000);
+  assert.equal(result.status, "waiting");
+  assert.equal(result.stage, "等待你的回复");
+});
+
+test("steering messages preserve turn start time and pending calls", () => {
+  const events = [
+    event(1_800_000_000_000, "task_started"),
+    event(1_800_000_001_000, "user_message"),
+    event(1_800_000_010_000, "function_call", { name: "exec_command", call_id: "in-flight" }),
+    { timestamp: new Date(1_800_000_015_000).toISOString(), type: "response_item",
+      payload: { type: "message", role: "user" } },
+  ];
+  const result = analyseThread(thread, events, 1_800_000_020_000);
+  assert.equal(result.startedAt, 1_800_000_000_000);
+  assert.equal(result.stage, "正在执行本机操作");
+});
+
 test("analyseThread removes a task after task_complete", () => {
   const events = [
     event(1_800_000_000_000, "user_message"),
