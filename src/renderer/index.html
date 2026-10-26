@@ -56,7 +56,12 @@
       </header>
 
       <main>
-        <section class="overview-header">
+<div id="error-banner" class="error-banner" hidden>
+          <span class="error-icon">!</span>
+          <span id="error-message"></span>
+        </div>
+<div class="workspace-grid">
+<section class="overview-header">
           <div>
             <p class="eyebrow">ACCOUNT OVERVIEW</p>
             <h1>Codex 用量一览</h1>
@@ -66,14 +71,7 @@
             <strong id="updated-at">等待首次同步</strong>
           </div>
         </section>
-
-        <div id="error-banner" class="error-banner" hidden>
-          <span class="error-icon">!</span>
-          <span id="error-message"></span>
-        </div>
-
-        <section class="hero-grid">
-          <article class="hero-card remaining-card">
+<article class="hero-card remaining-card">
             <div class="card-heading">
               <div>
                 <span class="card-kicker">主要额度</span>
@@ -95,8 +93,7 @@
               </div>
             </div>
           </article>
-
-          <article class="task-panel">
+<article class="task-panel">
             <div class="task-heading">
               <div>
                 <span class="card-kicker">CODEX 任务</span>
@@ -116,10 +113,7 @@
               <span id="task-updated">等待首次采集</span>
             </div>
           </article>
-        </section>
-
-        <section class="lower-grid">
-          <article class="panel usage-panel">
+<article class="panel usage-panel">
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">TOKEN ACTIVITY</p>
@@ -132,8 +126,7 @@
               <div class="chart-empty">正在读取每日用量…</div>
             </div>
           </article>
-
-          <article class="panel credits-panel">
+<article class="panel credits-panel">
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">RESET CREDITS</p>
@@ -145,7 +138,7 @@
               <div class="chart-empty">正在读取重置记录…</div>
             </div>
           </article>
-        </section>
+</div>
       </main>
 
       <footer>

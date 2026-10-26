@@ -230,3 +230,24 @@ test("wake recovery keeps the last snapshot and hides raw sqlite commands", () =
   assert.equal(prolonged.error, "Codex 任务状态暂时不可用，正在自动重试。");
   assert.equal(prolonged.error.includes("sqlite3"), false);
 });
+
+
+test("current turn model and effort override thread defaults", () => {
+  const now = Date.now();
+  const events = [
+    { timestamp: new Date(now - 1000).toISOString(), type: "event_msg", payload: { type: "task_started" } },
+    { timestamp: new Date(now).toISOString(), type: "turn_context", payload: { model: "gpt-current", effort: "xhigh" } },
+  ];
+  const result = analyseThread({ id: "model-test", model: "gpt-old", reasoningEffort: "low" }, events, now);
+  assert.equal(result.model, "gpt-current");
+  assert.equal(result.reasoningEffort, "xhigh");
+});
+
+test("missing context uses database settings, and missing effort stays unknown", () => {
+  const now = Date.now();
+  const start = { timestamp: new Date(now).toISOString(), type: "event_msg", payload: { type: "task_started" } };
+  const thread = { id: "model-test", model: "gpt-db", reasoningEffort: "high" };
+  assert.equal(analyseThread(thread, [start], now).reasoningEffort, "high");
+  const context = { ...start, type: "turn_context", payload: { model: "gpt-new" } };
+  assert.equal(analyseThread(thread, [start, context], now).reasoningEffort, null);
+});

@@ -1,3 +1,5 @@
+import { tokenScale } from "./chart-scale.mjs";
+
 const api = window.codexMeter;
 
 const nodes = Object.fromEntries(
@@ -131,14 +133,29 @@ function renderTasks(snapshot) {
       element("span", "", `已运行 ${elapsedLabel(task.startedAt)}`),
       element("span", "", updatedLabel(task.updatedAt)),
     );
-    copy.append(
-      title,
-      meta,
+    const execution = element("div", "task-meta task-execution");
+    const effortLabels = { none: "无", minimal: "最低", low: "低", medium: "中", high: "高", xhigh: "极高", max: "最大", ultra: "超高" };
+    execution.append(
+      element("span", "", `模型：${task.model || "待同步"}`),
+      element("span", "", `推理强度：${effortLabels[task.reasoningEffort] || task.reasoningEffort || "待同步"}`),
     );
+    copy.append(title, execution, meta);
     row.append(indicator, copy, element("span", `task-status is-${task.status}`, task.statusLabel));
     nodes["task-list"].append(row);
   }
+  sizeTaskList();
 }
+
+// Reserve enough room for three complete task rows, including wrapped metadata.
+function sizeTaskList() {
+  const rows = [...nodes["task-list"].querySelectorAll(".task-row")].slice(0, 3);
+  if (!rows.length) return;
+  const heights = rows.map(row => row.getBoundingClientRect().height);
+  const height = heights.reduce((sum, value) => sum + value, 0)
+    + (3 - rows.length) * Math.max(...heights) + 6;
+  nodes["task-list"].style.setProperty("--three-task-height", `${Math.ceil(height)}px`);
+}
+new ResizeObserver(sizeTaskList).observe(nodes["task-list"]);
 
 function renderUsage(daily) {
   nodes["usage-chart"].replaceChildren();
@@ -151,18 +168,48 @@ function renderUsage(daily) {
     nodes["chart-range"].textContent = "—";
     return;
   }
-  const max = Math.max(...visible.map((item) => item.tokens), 1);
+  const scale = tokenScale(visible.map(item => item.tokens));
   nodes["chart-range"].textContent = `${visible[0].date} — ${visible.at(-1).date}`;
-  for (const item of visible) {
-    const height = Math.max(3, Math.round((item.tokens / max) * 100));
+  const axis = element("div", "chart-y-axis");
+  axis.setAttribute("aria-label", "纵轴：Token 消耗量");
+  const plot = element("div", "chart-plot");
+  const grid = element("div", "chart-grid");
+  const bars = element("div", "chart-bars");
+  for (const [index, value] of scale.ticks.entries()) {
+    const tick = element("span", "chart-y-tick", safeNumber(value));
+    tick.style.top = `${index * 25}%`;
+    axis.append(tick);
+    const line = element("div", "chart-grid-line");
+    line.style.top = `${index * 25}%`;
+    grid.append(line);
+  }
+  const dates = element("div", "chart-x-axis");
+  dates.setAttribute("aria-label", "横轴：活跃日期，各柱间隔代表一个活跃日");
+  const labelIndexes = new Set(Array.from({ length: Math.min(5, visible.length) }, (_, i) =>
+    Math.round(i * (visible.length - 1) / Math.max(1, Math.min(5, visible.length) - 1))));
+  for (const [index, item] of visible.entries()) {
+    const tokens = Math.max(0, Number(item.tokens) || 0);
+    const height = tokens / scale.max * 100;
     const wrap = element("div", "chart-bar-wrap");
     wrap.style.setProperty("--bar-height", `${height}%`);
-    const tooltip = element("span", "chart-tooltip", `${shortDate.format(new Date(`${item.date}T12:00:00`))} · ${safeNumber(item.tokens)} tokens`);
+    wrap.tabIndex = 0;
+    const description = `${item.date} · ${tokens.toLocaleString("zh-CN")} tokens`;
+    wrap.setAttribute("aria-label", description);
+    const tooltip = element("span", "chart-tooltip", description);
     const bar = element("div", "chart-bar");
     bar.style.height = `${height}%`;
     wrap.append(tooltip, bar);
-    nodes["usage-chart"].append(wrap);
+    bars.append(wrap);
+    if (labelIndexes.has(index)) {
+      const date = element("span", "chart-x-tick", item.date.slice(5).replace("-", "/"));
+      date.style.left = `${(index + 0.5) / visible.length * 100}%`;
+      if (index === 0) date.classList.add("is-first");
+      if (index === visible.length - 1) date.classList.add("is-last");
+      dates.append(date);
+    }
   }
+  plot.append(grid, bars);
+  nodes["usage-chart"].append(axis, plot, element("span", "chart-axis-unit", "Token"), dates);
 }
 
 function renderCredits(summary) {

@@ -23,7 +23,9 @@ SELECT
   updated_at_ms AS updatedAtMs,
   substr(first_user_message, 1, 180) AS firstUserMessage,
   agent_nickname AS agentNickname,
-  agent_role AS agentRole
+  agent_role AS agentRole,
+  model,
+  reasoning_effort AS reasoningEffort
 FROM threads
 WHERE archived = 0 AND rollout_path <> ''
 ORDER BY updated_at_ms DESC
@@ -159,8 +161,16 @@ export function analyseThread(thread, events, now = Date.now(), { runtimeActive 
     .replace(/\s+/g, " ")
     .trim();
 
+  const context = [...turnEvents].reverse().find((event) => event.type === "turn_context")?.payload;
+  const model = context?.model || thread.model || null;
+  const reasoningEffort = context
+    ? context.effort ?? context.reasoning_effort ?? null
+    : thread.reasoningEffort || null;
+
   return {
     id: thread.id,
+    model,
+    reasoningEffort,
     title,
     project: path.basename(thread.cwd || "") || "未命名项目",
     cwd: thread.cwd || "",
